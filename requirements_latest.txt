@@ -98,11 +98,10 @@ nvidia-nvshmem-cu12==3.3.20
 nvidia-nvtx-cu12==12.8.90
 omegaconf==2.3.0
 openpyxl==3.1.5
-packaging==25.0
+packaging>=23.0,<25.0
 pandas==2.3.3
 parso==0.8.5
 pathos==0.3.4
-pathtools==0.1.2
 peft==0.17.1
 pexpect==4.9.0
 pillow==11.3.0
@@ -159,7 +158,6 @@ tblib==3.2.1
 threadpoolctl==3.6.0
 tokenizers==0.22.1
 torch==2.9.0
-torchaudio==2.4.1+cu121
 torchvision==0.24.0
 tornado==6.5.2
 tqdm==4.67.1
