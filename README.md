@@ -25,8 +25,13 @@
 # 快速测试RTE任务（1个epoch）
 python glue_qst_llama3.py --task rte --epochs 1
 
+# 指定模型训练
+python glue_qst_llama3.py --model_checkpoint meta-llama/Llama-3.2-3B
+
 # 完整训练SST-2任务
 python glue_qst_llama3.py --task sst2
+
+# 更多参数查看train_qst_with_stats.py中的 "__main__"
 ```
 
 ### 运行所有GLUE任务
