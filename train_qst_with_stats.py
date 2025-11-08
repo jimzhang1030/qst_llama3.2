@@ -93,8 +93,19 @@ class QSTLlamaForSequenceClassification(PreTrainedModel):
         side_config.hidden_size = self.d_side
         side_config.num_hidden_layers = self.num_layers
         side_config.intermediate_size = side_config.intermediate_size // reduction_factor_r
+        # 自动调整attention heads (论文要求)
+        side_num_heads = max(1, self.d_side // 64)
+        side_config.num_attention_heads = side_num_heads
+        side_config.num_key_value_heads = side_num_heads
         # 我们创建一个新的LlamaModel作为侧网络，但不加载其预训练权重
         self.side_network = LlamaModel(side_config)
+        
+        # 冻结侧网络的embedding层 (16.42M参数) 和norm层
+        # 论文中侧网络只训练transformer层，不训练embedding
+        for param in self.side_network.embed_tokens.parameters():
+            param.requires_grad = False
+        for param in self.side_network.norm.parameters():
+            param.requires_grad = False
         
         # 4. Downsamplers (N个层 + 1个嵌入层)
         # 论文提到也下采样嵌入层 [cite: 216]
@@ -190,6 +201,13 @@ class QSTLlamaForSequenceClassification(PreTrainedModel):
         self.base_model.requires_grad_(False)
         # 确保 QST 组件是可训练的 (它们默认是)
         self.side_network.requires_grad_(True)
+        
+        # 重要：冻结侧网络的embedding和norm (不应该训练这16.42M参数)
+        for param in self.side_network.embed_tokens.parameters():
+            param.requires_grad = False
+        for param in self.side_network.norm.parameters():
+            param.requires_grad = False
+        
         self.downsampler_embed.requires_grad_(True)
         self.downsamplers_layers.requires_grad_(True)
         self.upsampler.requires_grad_(True)
