@@ -1,6 +1,19 @@
 import argparse
 import pandas as pd
 from datetime import datetime
+
+# 任务特定超参数（来自论文）
+TASK_HYPERPARAMS = {
+    "rte": {"epochs": 5, "batch_size": 16, "lr": 2e-4, "warmup_ratio": 0.06, "max_len": 256},
+    "mrpc": {"epochs": 5, "batch_size": 8, "lr": 2e-4, "warmup_ratio": 0.06, "max_len": 256},
+    "stsb": {"epochs": 5, "batch_size": 16, "lr": 2e-4, "warmup_ratio": 0.06, "max_len": 256},
+    "cola": {"epochs": 5, "batch_size": 16, "lr": 2e-4, "warmup_ratio": 0.06, "max_len": 256},
+    "sst2": {"epochs": 5, "batch_size": 16, "lr": 2e-4, "warmup_ratio": 0.06, "max_len": 128},
+    "qnli": {"epochs": 5, "batch_size": 8, "lr": 2e-4, "warmup_ratio": 0.06, "max_len": 256},
+    "qqp": {"epochs": 5, "batch_size": 8, "lr": 2e-4, "warmup_ratio": 0.06, "max_len": 256},
+    "mnli": {"epochs": 5, "batch_size": 16, "lr": 2e-4, "warmup_ratio": 0.06, "max_len": 256},
+}
+
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
@@ -30,11 +43,15 @@ class AdapterModule(nn.Module):
     论文中推荐的 Downsampler 实现 (Section 4.6, Table 6) [cite: 425]
     这是一个瓶颈(bottleneck)结构的适配器：Linear -> Activation -> Linear
     """
-    def __init__(self, in_features, out_features, bottleneck_dim, activation=nn.GELU()):
+    def __init__(self, in_features, out_features, bottleneck_dim, activation=nn.SiLU()):
         super().__init__()
-        self.down_proj = nn.Linear(in_features, bottleneck_dim)
+        self.down_proj = nn.Linear(in_features, bottleneck_dim,bias=False)
         self.activation = activation
-        self.up_proj = nn.Linear(bottleneck_dim, out_features)
+        self.up_proj = nn.Linear(bottleneck_dim, out_features,bias=False)
+        self.dropout = nn.Dropout(p=0.1)
+        # Kaiming初始化
+        nn.init.kaiming_uniform_(self.down_proj.weight, a=0, mode="fan_in", nonlinearity="linear")
+        nn.init.kaiming_uniform_(self.up_proj.weight, a=0, mode="fan_in", nonlinearity="linear")
         self.layer_norm = nn.LayerNorm(out_features)
         
     def forward(self, x):
@@ -91,9 +108,9 @@ class QSTLlamaForSequenceClassification(PreTrainedModel):
         
         # 6. Gating 参数 [cite: 213, 216]
         # betas: 每一层的混合权重，初始化为0 [cite: 216]
-        self.betas = nn.Parameter(torch.zeros(self.num_layers))
+        self.betas = nn.Parameter(torch.ones(self.num_layers) * -2.0)  # 优化: 初始化为-2.0
         # alpha: 最终输出的混合权重，初始化为1 [cite: 214]
-        self.alpha = nn.Parameter(torch.tensor(1.0))
+        self.alpha = nn.Parameter(torch.tensor(2.0))  # 优化: alpha增大到2.0
         
         # 7. 分类头 (我们复用 base_model 的分类头)
         self.classifier = base_model_4bit.score
@@ -333,6 +350,7 @@ def train_qst_model(task, parameters):
     epochs = parameters["epochs"]
     r = parameters.get("r", 16) # 论文默认r=16 [cite: 253]
     alpha_r = parameters.get("alpha_r", 16) # 论文中Downsampler的秩 [cite: 254]
+    learning_rate = parameters.get("learning_rate", 2e-4) # 可自定义学习率
 
     print("\n" + "="*60)
     print(f"QST (论文实现) 4-bit量化训练: {task}")
@@ -405,18 +423,21 @@ def train_qst_model(task, parameters):
         f"llama3-qst-4bit-{task}",
         eval_strategy="epoch",
         save_strategy="epoch",
-        learning_rate=2e-4, # 论文在 MMLU 上使用 2E-04 [cite: 671, 681]
+        lr_scheduler_type="cosine",
+        learning_rate=learning_rate, # 使用参数中的learning_rate
         per_device_train_batch_size=batch_size,
         per_device_eval_batch_size=batch_size,
         num_train_epochs=epochs,
         weight_decay=0.01,
         load_best_model_at_end=True,
+        dataloader_num_workers=2,  # 数据加载优化
         metric_for_best_model=metric_name,
         push_to_hub=False,
         fp16=False,
         bf16=True, # 必须使用 BF16 [cite: 254]
         logging_steps=100,
         save_total_limit=2,
+        max_grad_norm=1.0,  # 梯度裁剪
         report_to="none",
     )
     
