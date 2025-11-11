@@ -25,7 +25,8 @@ if __name__ == "__main__":
     parser.add_argument("--task", type=str, default=None, help="运行单个任务，或不指定则运行所有任务")
     parser.add_argument("--r", type=int, default=16, help="侧网络缩减因子 (默认16)")
     parser.add_argument("--alpha_r", type=int, default=16, help="Downsampler秩 (默认16)")
-    parser.add_argument("--override_epochs", type=int, default=None, help="强制覆盖epochs (用于快速测试)")
+    parser.add_argument("--epochs", type=int, default=None, help="训练轮数 (覆盖任务默认值)")
+    parser.add_argument("--batch_size", type=int, default=None, help="批次大小 (覆盖任务默认值)")
     parser.add_argument("--use_task_params", action="store_true", default=True, help="使用论文推荐的任务超参数")
     args = parser.parse_args()
     
@@ -65,9 +66,9 @@ if __name__ == "__main__":
             print(f"   - max_len: {task_config['max_len']}")
             
             # 允许命令行覆盖epochs
-            if args.override_epochs:
-                task_config['epochs'] = args.override_epochs
-                print(f"   - [覆盖] epochs: {args.override_epochs}")
+            if args.epochs:
+                task_config['epochs'] = args.epochs
+                print(f"   - [覆盖] epochs: {args.epochs}")
             
             parameters = {
                 "model_checkpoint": args.model_checkpoint,
@@ -85,7 +86,7 @@ if __name__ == "__main__":
                 "model_checkpoint": args.model_checkpoint,
                 "batch_size": 16,
                 "max_len": 256,
-                "epochs": args.override_epochs if args.override_epochs else 3,
+                "epochs": args.epochs if args.epochs else 3,
                 "learning_rate": 2e-4,
                 "warmup_ratio": 0.06,
                 "r": args.r,
